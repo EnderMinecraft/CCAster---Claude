@@ -1637,7 +1637,18 @@ static BOOL CCAConnectivitySelectedForIdentifier(NSString *identifier) {
         id manager = CCADynamicSharedInstance(@"CoreTelephonyClient");
         return CCADynamicBool(manager, @[@"cellularDataEnabled", @"isCellularDataEnabled"], NO);
     }
-    if ([lower containsString:@".hotspot"]) return CCADynamicBool(CCADynamicSharedInstance(@"SBTetheringController"), @[@"isPersonalHotspotEnabled", @"personalHotspotEnabled", @"tetheringEnabled"], NO);
+    if ([lower containsString:@".hotspot"]) {
+        id controller = CCADynamicSharedInstance(@"SBTetheringController");
+        if (controller) return CCADynamicBool(controller, @[@"isPersonalHotspotEnabled",
+                                                            @"personalHotspotEnabled",
+                                                            @"tetheringEnabled"], NO);
+        // Fallback: read from prefs when controller isn't loaded
+        CFPropertyListRef val = CFPreferencesCopyAppValue(CFSTR("AllowPersonalHotspot"),
+                                                        CFSTR("com.apple.preferences.network"));
+        BOOL result = val ? [((__bridge NSNumber *)val) boolValue] : NO;
+        if (val) CFRelease(val);
+        return result;
+    }
     if ([lower containsString:@".vpn"]) {
         NSDictionary *settings = (__bridge_transfer NSDictionary *)CFNetworkCopySystemProxySettings();
         NSArray *scoped = settings[@"__SCOPED__"] ? [settings[@"__SCOPED__"] allKeys] : nil;
@@ -1677,7 +1688,19 @@ static BOOL CCAConnectivityAvailableForIdentifier(NSString *identifier) {
         id manager = CCADynamicSharedInstance(@"CoreTelephonyClient");
         return manager && CCADynamicBool(manager, @[@"supportsCellular"], NO);
     }
-    if ([lower containsString:@".hotspot"]) return CCADynamicSharedInstance(@"SBTetheringController") != nil;
+    if ([lower containsString:@".hotspot"]) {
+        // SBTetheringController can be nil in SpringBoard even when hotspot is
+        // carrier-supported. Fall back to checking CTCarrier capability.
+        id controller = CCADynamicSharedInstance(@"SBTetheringController");
+        if (controller) return YES;
+        // Secondary check: if we can read the hotspot state at all, hardware is present
+        BOOL canRead = CCADynamicBool(controller, @[@"isPersonalHotspotEnabled",
+                                                    @"personalHotspotEnabled",
+                                                    @"tetheringEnabled"], NO);
+        // Try CoreTelephony carrier as last resort
+        Class netInfo = NSClassFromString(@"CTTelephonyNetworkInfo");
+        return (canRead || netInfo != nil);
+    }
     if ([lower containsString:@".vpn"]) return CCAConnectivitySelectedForIdentifier(identifier);
     return YES;
 }
@@ -2966,7 +2989,8 @@ static void CCASetConnectivitySelectedSurface(UIViewController *module, BOOL sel
         [moduleView addSubview:surface];
     }
     surface.frame = moduleView.bounds;
-    surface.layer.cornerRadius = moduleView.layer.cornerRadius;
+    surface.layer.cornerRadius = [[CCAsterCoordinator shared] refinedCornerRadiusForModuleView:moduleView];
+    surface.layer.cornerCurve = kCACornerCurveContinuous;
     surface.backgroundColor = [UIColor colorWithWhite:0.96 alpha:0.92];
     UIView *material = CCAFirstModuleMaterialSurface(moduleView);
     void (^changes)(void) = ^{
@@ -6084,9 +6108,19 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (![objc_getAssociatedObject(sender, @selector(connectivityTileProxyTapped:)) boolValue]) return;
     NSString *identifier = objc_getAssociatedObject(sender, kCCAConnectivityIdentifierKey);
     if ([identifier.lowercaseString containsString:@".airdrop"]) {
-        CCASetConnectivityProxyPressed(sender, NO);
-        [self expandConnectivityFromMiniCluster:(UIButton *)sender];
-        return;
+        CFPropertyListRef rawMode = CFPreferencesCopyAppValue(CFSTR("DiscoverableMode"), CFSTR("com.apple.sharingd"));
+        NSString *current = CFBridgingRelease(rawMode);
+        NSString *next;
+        if (!current || [current isEqualToString:@"Off"]) {
+            next = enabled ? @"Contacts Only" : @"Off";
+        } else {
+            next = @"Off";
+        }
+        CFPreferencesSetAppValue(CFSTR("DiscoverableMode"), (__bridge CFPropertyListRef)next, CFSTR("com.apple.sharingd"));
+        CFPreferencesAppSynchronize(CFSTR("com.apple.sharingd"));
+        // Notify sharingd to pick up the change
+        notify_post("com.apple.sharingd.DiscoverableModeChanged");
+        return YES;
     }
     BOOL current = CCAConnectivitySelectedForIdentifier(identifier);
     BOOL target = !current;
@@ -7043,7 +7077,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)configureEditingBorder:(UIVisualEffectView *)border moduleFrame:(CGRect)moduleFrame {
     if (!border) return;
     border.frame = CGRectInset(moduleFrame, -3.5, -3.5);
-    CGFloat radius = [self refinedCornerRadiusForSize:moduleFrame.size];
+    CGFloat radius = [self editingModuleCornerRadiusForSize:moduleFrame.size];
     UIBezierPath *ring = [UIBezierPath bezierPathWithRoundedRect:border.bounds cornerRadius:radius + 3.5];
     [ring appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectInset(border.bounds, 3.5, 3.5) cornerRadius:radius]];
     CAShapeLayer *mask = [CAShapeLayer layer];
