@@ -2966,7 +2966,13 @@ static void CCASetConnectivitySelectedSurface(UIViewController *module, BOOL sel
         [moduleView addSubview:surface];
     }
     surface.frame = moduleView.bounds;
-    surface.layer.cornerRadius = moduleView.layer.cornerRadius;
+    CGFloat _sw = CGRectGetWidth(moduleView.bounds), _sh = CGRectGetHeight(moduleView.bounds);
+    CGFloat _min = MIN(_sw, _sh);
+    CGFloat _surfaceRadius = (_min > 0 && fabs(_sw - _sh) <= 3.0 && _min <= 76.0)
+        ? _min * 0.5
+        : MIN(32.0, MAX(22.0, _min * 0.5 - 6.0));
+    surface.layer.cornerRadius = _surfaceRadius;
+    surface.layer.cornerCurve = kCACornerCurveContinuous;
     surface.backgroundColor = [UIColor colorWithWhite:0.96 alpha:0.92];
     UIView *material = CCAFirstModuleMaterialSurface(moduleView);
     void (^changes)(void) = ^{
@@ -7043,7 +7049,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)configureEditingBorder:(UIVisualEffectView *)border moduleFrame:(CGRect)moduleFrame {
     if (!border) return;
     border.frame = CGRectInset(moduleFrame, -3.5, -3.5);
-    CGFloat radius = [self refinedCornerRadiusForSize:moduleFrame.size];
+    CGFloat radius = [self editingModuleCornerRadiusForSize:moduleFrame.size];
     UIBezierPath *ring = [UIBezierPath bezierPathWithRoundedRect:border.bounds cornerRadius:radius + 3.5];
     [ring appendPath:[UIBezierPath bezierPathWithRoundedRect:CGRectInset(border.bounds, 3.5, 3.5) cornerRadius:radius]];
     CAShapeLayer *mask = [CAShapeLayer layer];
