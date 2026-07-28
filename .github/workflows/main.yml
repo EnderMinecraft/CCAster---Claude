@@ -28,7 +28,9 @@ jobs:
 
       - name: Install Theos
         run: |
-          sudo git clone --recursive https://github.com/theos/theos.git $THEOS
+          sudo mkdir -p $THEOS
+          sudo chown -R "$(whoami)" $THEOS
+          git clone --recursive https://github.com/theos/theos.git $THEOS
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "PATH=$THEOS/bin:$PATH" >> "$GITHUB_ENV"
 
@@ -38,15 +40,29 @@ jobs:
             https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64
           sudo chmod +x /usr/local/bin/ldid
 
+      # theos/theos (cloned above) only contains the makefiles/scripts.
+      # The actual Linux cross clang/clang++ toolchain for the iphone target
+      # ships separately from theos/theos-linux-toolchain and must be
+      # extracted into $THEOS/toolchain/linux/iphone.
+      - name: Install Theos Linux toolchain
+        run: |
+          TOOLCHAIN_URL=$(curl -s https://api.github.com/repos/theos/theos-linux-toolchain/releases/latest \
+            | grep browser_download_url | grep 'linux-x86_64' | cut -d '"' -f 4)
+          echo "Downloading $TOOLCHAIN_URL"
+          curl -L -o /tmp/toolchain.tar.xz "$TOOLCHAIN_URL"
+          mkdir -p $THEOS/toolchain/linux/iphone
+          tar -xf /tmp/toolchain.tar.xz -C $THEOS/toolchain/linux/iphone --strip-components=1
+          ls $THEOS/toolchain/linux/iphone/bin
+
       # CCAster targets iOS 16 (rootless), so we need an iOS 16.x SDK.
       # theos/sdks hosts prebuilt SDKs Theos can consume directly.
       - name: Install iOS 16.5 SDK
         run: |
-          sudo git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git /tmp/sdks
+          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git /tmp/sdks
           cd /tmp/sdks
-          sudo git sparse-checkout set --no-cone iPhoneOS16.5.sdk
-          sudo git checkout
-          sudo mv iPhoneOS16.5.sdk $THEOS/sdks/
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+          git checkout
+          mv iPhoneOS16.5.sdk $THEOS/sdks/
           ls $THEOS/sdks
 
       - name: Build package
