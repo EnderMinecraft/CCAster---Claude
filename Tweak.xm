@@ -2989,7 +2989,12 @@ static void CCASetConnectivitySelectedSurface(UIViewController *module, BOOL sel
         [moduleView addSubview:surface];
     }
     surface.frame = moduleView.bounds;
-    surface.layer.cornerRadius = [[CCAsterCoordinator shared] refinedCornerRadiusForModuleView:moduleView];
+    CGFloat _sw = CGRectGetWidth(moduleView.bounds), _sh = CGRectGetHeight(moduleView.bounds);
+    CGFloat _min = MIN(_sw, _sh);
+    CGFloat _surfaceRadius = (_min > 0 && fabs(_sw - _sh) <= 3.0 && _min <= 76.0)
+        ? _min * 0.5
+        : MIN(32.0, MAX(22.0, _min * 0.5 - 6.0));
+    surface.layer.cornerRadius = _surfaceRadius;
     surface.layer.cornerCurve = kCACornerCurveContinuous;
     surface.backgroundColor = [UIColor colorWithWhite:0.96 alpha:0.92];
     UIView *material = CCAFirstModuleMaterialSurface(moduleView);
@@ -6112,15 +6117,15 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         NSString *current = CFBridgingRelease(rawMode);
         NSString *next;
         if (!current || [current isEqualToString:@"Off"]) {
-            next = enabled ? @"Contacts Only" : @"Off";
+            next = @"Contacts Only";
         } else {
             next = @"Off";
         }
         CFPreferencesSetAppValue(CFSTR("DiscoverableMode"), (__bridge CFPropertyListRef)next, CFSTR("com.apple.sharingd"));
         CFPreferencesAppSynchronize(CFSTR("com.apple.sharingd"));
         // Notify sharingd to pick up the change
-        notify_post("com.apple.sharingd.DiscoverableModeChanged");
-        return YES;
+
+        return;
     }
     BOOL current = CCAConnectivitySelectedForIdentifier(identifier);
     BOOL target = !current;
