@@ -1970,7 +1970,7 @@ static void CCAUpdateSliderGlyphColor(UIView *slider, float value, BOOL animate)
         nativeGlyph = [UIImage systemImageNamed:symbolName withConfiguration:symbolConfiguration];
     } else {
         symbolState = @"brightness.variable";
-        if (@available(iOS 16.0, *)) {
+        if ([NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion){16, 0, 0}]) {
             nativeGlyph = [UIImage systemImageNamed:@"sun.max.fill"
                                        variableValue:variableValue
                                     withConfiguration:symbolConfiguration];
